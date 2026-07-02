@@ -5838,14 +5838,14 @@ html{
     <div class="adm-logo">64 - Manager</div>
     <div class="adm-hbtns">
       <button class="adm-hbtn adm-hbtn-white" id="admBtnAdd">+ Add Model</button>
-      <button class="adm-hbtn adm-hbtn-white" id="admBtnImport">Import</button>
+      <button class="adm-hbtn adm-hbtn-white" id="admBtnImport">Import CSV</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExport">Export JSON</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExportCsv">Export CSV</button>
       <button class="adm-hbtn adm-hbtn-green" id="admBtnRefresh">Sync Inventory</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnSaveOrder">Save Order</button>
       <a class="adm-hbtn adm-hbtn-white" href="?" style="text-decoration:none;display:flex;align-items:center">Preview Shop</a>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnLogout" style="margin-left:auto">Logout</button>
-      <input type="file" id="admImportFile" accept=".json,.csv,.xlsx,.xls" style="display:none"/>
+      <input type="file" id="admImportFile" accept=".csv,.xlsx,.xls" style="display:none"/>
     </div>
   </div>
   <div class="adm-stats" id="admStats"></div>
@@ -7295,7 +7295,7 @@ function runImport(rows){
   var i = 0;
   function saveNext(){
     if(i >= products.length){
-      btn.disabled = false; btn.textContent = 'Import';
+      btn.disabled = false; btn.textContent = 'Import CSV';
       fetchProducts(function(){ admRefreshAll(); });
       alert('Done — imported ' + products.length + ' products.');
       return;
@@ -7308,64 +7308,26 @@ function runImport(rows){
 
 function admImportJson(file){
   var ext = file.name.split('.').pop().toLowerCase();
-
-  if(ext === 'json'){
+  if(ext !== 'csv' && ext !== 'xlsx' && ext !== 'xls'){
+    alert('Unsupported file type. Please use CSV or Excel (.xlsx / .xls).');
+    return;
+  }
+  loadSheetJs(function(){
     var reader = new FileReader();
     reader.onload = function(e){
-      var data;
-      try{ data = JSON.parse(e.target.result); }
-      catch(err){ alert('Invalid JSON file.'); return; }
-      if(!Array.isArray(data) || !data.length){ alert('No products found in JSON file.'); return; }
-      // Support both our export format (with PRODUCT NAME etc) and any array of objects
-      var rows = data.map(function(p){
-        // If it's already in our internal format (has p.name, p.model directly) use as-is
-        if(p.model && p.name) return p;
-        return null;
-      });
-      var directFormat = rows.every(function(r){ return r !== null; });
-      if(directFormat){
-        runImport(data.map(function(p,idx){
-          return {
-            name:p['PRODUCT NAME']||p.name||'', brand:p['BRAND']||p.brand||'',
-            carbrand:p['CARBRAND']||p.carbrand||'', model:p['MODEL NO.']||p.model||'',
-            price:Number(p['PRICE']||p.price||0), origPrice:Number(p['ORIGPRICE']||p.origPrice||p['PRICE']||p.price||0),
-            qty:Number(p['QTY']||p.qty||0), tag:p['STATUS']||p.status||'instock',
-            sortOrder:Number(p['SORTORDER']||p.sortOrder||idx+1),
-            imgs:[p['IMG1']||'',p['IMG2']||'',p['IMG3']||'',p['IMG4']||''],
-            img1Pos:p['IMG1POS']||'center', img2Pos:p['IMG2POS']||'center',
-            img1Zoom:Number(p['IMG1ZOOM']||100), img2Zoom:Number(p['IMG2ZOOM']||100),
-            refImg:p['REF IMG']||''
-          };
-        }));
-      } else {
-        runImport(data);
+      try{
+        var data = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(data, {type:'array'});
+        var sheet = workbook.Sheets[workbook.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+        if(!rows.length){ alert('No data found in the file. Check the first sheet has column headers.'); return; }
+        runImport(rows);
+      }catch(err){
+        alert('Could not read file: ' + err.message);
       }
     };
-    reader.readAsText(file);
-    return;
-  }
-
-  if(ext === 'csv' || ext === 'xlsx' || ext === 'xls'){
-    loadSheetJs(function(){
-      var reader = new FileReader();
-      reader.onload = function(e){
-        try{
-          var data = new Uint8Array(e.target.result);
-          var workbook = XLSX.read(data, {type:'array'});
-          var sheet = workbook.Sheets[workbook.SheetNames[0]];
-          var rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
-          if(!rows.length){ alert('No data found in the file.'); return; }
-          runImport(rows);
-        }catch(err){
-          alert('Could not read file: ' + err.message);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
-    return;
-  }
-
-  alert('Unsupported file type. Please use JSON, CSV, or Excel (.xlsx).');
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 function analyseImport(incoming){
