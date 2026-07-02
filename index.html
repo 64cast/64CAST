@@ -5839,6 +5839,7 @@ html{
     <div class="adm-hbtns">
       <button class="adm-hbtn adm-hbtn-white" id="admBtnAdd">+ Add Model</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnImport">Import CSV</button>
+      <button class="adm-hbtn adm-hbtn-white" id="admBtnBulkImages">Bulk Auto-fill Images</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExport">Export JSON</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExportCsv">Export CSV</button>
       <button class="adm-hbtn adm-hbtn-green" id="admBtnRefresh">Sync Inventory</button>
@@ -5913,12 +5914,8 @@ html{
         <div class="adm-fg"><label>ETA (Pre Orders)</label><input type="text" id="admFEta" placeholder="e.g. Aug 2026"/></div>
       </div>
       <div class="adm-sectitle">Model Images (up to 4)</div>
-      <div class="adm-autofill-row">
-        <button type="button" class="adm-btn-autofill" id="admAutofillImgsBtn">Auto-fill Images</button>
-        <span class="hint">Generates URLs like images/MODEL-01.jpeg, MODEL-02.jpeg...</span>
-      </div>
+      <div class="hint">Images are loaded automatically from R2 using the model number. Enter URLs manually below, or use <strong>Bulk Auto-fill</strong> in the toolbar after importing your CSV to generate all URLs at once.</div>
       <div class="adm-img4" id="admImgGrid"></div>
-      <div class="hint">Upload your photo to your R2 bucket first, named like MODELNUMBER-01.jpg, MODELNUMBER-02.jpg, MODELNUMBER-03.jpg, MODELNUMBER-04.jpg, then click "Auto-fill Images" above to auto-generate the URLs. A live preview will appear once a valid link is entered.</div>
     </div>
     <div class="adm-mfoot"><button class="adm-mbtn-cancel" id="admMCancelBtn">Cancel</button><button class="adm-mbtn-save" id="admMSaveBtn">Save Model</button></div>
   </div>
@@ -7054,17 +7051,31 @@ function admRefreshAll(){ admStats(); admBrandFilter(); admTable(); }
 // images/MODEL-01.jpeg, images/MODEL-02.jpeg, images/MODEL-03.jpeg, images/MODEL-04.jpeg
 var ADM_IMAGE_BASE_PATH = 'https://pub-93350f16ecf844b7824fa0a683487d84.r2.dev/PI/';
 var ADM_IMAGE_EXT = '.jpg';
-function admAutofillImages(){
-  var model = g('admFModel').value.trim();
-  if(!model){
-    alert('Enter the Model Number first, then click this button to generate image URLs.');
-    return;
+function admBulkAutofillImages(){
+  var missing = PRODUCTS.filter(function(p){ return !p.imgs[0]; });
+  if(!missing.length){
+    alert('All products already have images set.'); return;
   }
-  for(var i=0;i<4;i++){
-    var suffix = '-0' + (i+1); // -01, -02, -03, -04
-    admImgs[i] = ADM_IMAGE_BASE_PATH + model + suffix + ADM_IMAGE_EXT;
+  if(!confirm('Auto-fill images for ' + missing.length + ' product(s) with missing images?\n\nThis will generate R2 URLs using each product\'s model number:\n' + ADM_IMAGE_BASE_PATH + 'MODEL-01' + ADM_IMAGE_EXT + '\n\nMake sure your images are uploaded to R2 first.')) return;
+
+  var btn = g('admBtnBulkImages');
+  btn.disabled = true;
+  var i = 0;
+  function saveNext(){
+    if(i >= missing.length){
+      btn.disabled = false; btn.textContent = 'Bulk Auto-fill Images';
+      fetchProducts(function(){ admRefreshAll(); });
+      alert('Done — updated ' + missing.length + ' product(s) with image URLs.');
+      return;
+    }
+    var p = missing[i];
+    for(var j=0;j<4;j++){
+      p.imgs[j] = ADM_IMAGE_BASE_PATH + p.model + '-0'+(j+1) + ADM_IMAGE_EXT;
+    }
+    btn.textContent = 'Saving ' + (i+1) + '/' + missing.length + '...';
+    pushUpdate(p, function(){ i++; saveNext(); });
   }
-  admBuildSlots();
+  saveNext();
 }
 
 function admBuildSlots(){
@@ -7433,6 +7444,7 @@ function unlockAdmin(){
   try{ sessionStorage.removeItem(CACHE_KEY); }catch(e){}
   fetchProducts(admRefreshAll);
   g('admBtnAdd').addEventListener('click', admAddOpen);
+  g('admBtnBulkImages').addEventListener('click', admBulkAutofillImages);
   g('admBtnImport').addEventListener('click', function(){ g('admImportFile').value=''; g('admImportFile').click(); });
   g('admImportFile').addEventListener('change', function(){ if(this.files[0]) admImportJson(this.files[0]); });
   g('admBtnExport').addEventListener('click', admExportJson);
@@ -7440,7 +7452,6 @@ function unlockAdmin(){
   g('admBtnLogout').addEventListener('click', function(){ clearAdminToken(); window.location.href = window.location.pathname; });
   g('admBtnRefresh').addEventListener('click', function(){ try{ sessionStorage.removeItem(CACHE_KEY); }catch(e){} fetchProducts(admRefreshAll); });
   g('admBtnSaveOrder').addEventListener('click', saveManualOrder);
-  g('admAutofillImgsBtn').addEventListener('click', admAutofillImages);
   g('admMCloseBtn').addEventListener('click', admClose);
   g('admMCancelBtn').addEventListener('click', admClose);
   g('admMSaveBtn').addEventListener('click', admSave);
