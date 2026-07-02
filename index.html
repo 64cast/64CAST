@@ -7432,7 +7432,7 @@ function showAdminLogin(){
 
 function unlockAdmin(){
   var lv = document.getElementById('admin-login-view');
-  if(lv){ lv.classList.remove('show'); }
+  if(lv){ lv.classList.remove('show'); lv.style.display='none'; }
   document.getElementById('shop-view').classList.add('hide');
   document.getElementById('admin-view').classList.add('show');
   document.title = '64 - Manager';
