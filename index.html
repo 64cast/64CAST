@@ -409,6 +409,17 @@ nav{
   flex-direction:column;
 }
 
+.filter-drawer-handle{
+  display:none;
+  width:40px;
+  height:4px;
+  background:var(--border);
+  border-radius:2px;
+  margin:12px auto 0;
+}
+@media(max-width:767px){
+  .filter-drawer-handle{ display:block; }
+}
 .filter-drawer-head{
   padding:16px 20px;
   border-bottom:1px solid var(--border);
@@ -4991,6 +5002,16 @@ html, body{
 
 </style>
 
+<script>
+// SheetJS lazy loader — only fetched when admin imports a CSV or Excel file
+function loadSheetJs(cb){
+  if(window.XLSX){ cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload = cb;
+  document.head.appendChild(s);
+}
+</script>
 </head>
 <body>
 
@@ -5397,12 +5418,35 @@ html, body{
   left:0 !important;
 }
 @media(max-width:767px){
-  .menu-panel, .filter-drawer{
-  left:-92vw !important;
-}
-  .menu-panel.open, .filter-drawer.open{
-  left:0 !important;
-}
+  .filter-drawer{
+    left:0 !important;
+    top:auto !important;
+    bottom:-100% !important;
+    width:100% !important;
+    max-width:100% !important;
+    height:auto !important;
+    max-height:88vh !important;
+    border-radius:20px 20px 0 0 !important;
+    border-right:none !important;
+    border-top:1px solid var(--border) !important;
+    box-shadow:0 -8px 40px rgba(0,0,0,.12) !important;
+    transform:none !important;
+    transition:bottom .35s cubic-bezier(.16,1,.3,1) !important;
+    overflow-y:auto !important;
+    padding-bottom:env(safe-area-inset-bottom,16px) !important;
+  }
+  .filter-drawer.open{
+    bottom:0 !important;
+  }
+  .filter-drawer-overlay{
+    background:rgba(0,0,0,.4) !important;
+  }
+  .menu-panel{
+    left:-92vw !important;
+  }
+  .menu-panel.open{
+    left:0 !important;
+  }
 }
 
 @media(max-width:767px){
@@ -5606,6 +5650,7 @@ html{
 <!-- FILTER DRAWER -->
 <div class="filter-drawer-overlay" id="filterDrawerOverlay"></div>
 <div class="filter-drawer" id="filterDrawer">
+  <div class="filter-drawer-handle"></div>
   <div class="filter-drawer-head">
     <div class="filter-drawer-title">Filter</div>
     <button class="filter-drawer-close" id="closeFiltersBtn"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
@@ -5793,14 +5838,14 @@ html{
     <div class="adm-logo">64 - Manager</div>
     <div class="adm-hbtns">
       <button class="adm-hbtn adm-hbtn-white" id="admBtnAdd">+ Add Model</button>
-      <button class="adm-hbtn adm-hbtn-white" id="admBtnImport">Import JSON</button>
+      <button class="adm-hbtn adm-hbtn-white" id="admBtnImport">Import</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExport">Export JSON</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnExportCsv">Export CSV</button>
       <button class="adm-hbtn adm-hbtn-green" id="admBtnRefresh">Sync Inventory</button>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnSaveOrder">Save Order</button>
       <a class="adm-hbtn adm-hbtn-white" href="?" style="text-decoration:none;display:flex;align-items:center">Preview Shop</a>
       <button class="adm-hbtn adm-hbtn-white" id="admBtnLogout" style="margin-left:auto">Logout</button>
-      <input type="file" id="admImportFile" accept=".json" style="display:none"/>
+      <input type="file" id="admImportFile" accept=".json,.csv,.xlsx,.xls" style="display:none"/>
     </div>
   </div>
   <div class="adm-stats" id="admStats"></div>
@@ -7195,6 +7240,134 @@ function admExportJson(){
   a.click();
 }
 
+function mapImportRow(row, idx){
+  // Flexible column mapping — works with our JSON export format AND Excel/CSV with common column names
+  function pick(names){
+    var keys = Object.keys(row);
+    for(var i=0;i<names.length;i++){
+      var found = keys.find(function(k){ return k.trim().toLowerCase() === names[i].toLowerCase(); });
+      if(found !== undefined && row[found] !== undefined && row[found] !== '') return row[found];
+    }
+    return '';
+  }
+  return {
+    name:    String(pick(['PRODUCT NAME','name','NAME','TITLE','title']) || '').trim(),
+    brand:   String(pick(['BRAND','brand']) || '').trim(),
+    carbrand:String(pick(['CARBRAND','CAR BRAND','carbrand','carBrand','VEHICLE MAKE','Vehicle Make','MAKE','make']) || '').trim(),
+    model:   String(pick(['MODEL NO.','MODEL NO','MODEL','model','SKU','sku']) || '').trim(),
+    price:   Number(pick(['PRICE','price','AED']) || 0),
+    origPrice: Number(pick(['ORIGPRICE','ORIGINAL PRICE','origPrice','originalPrice']) || pick(['PRICE','price','AED']) || 0),
+    qty:     Number(pick(['QTY','qty','QUANTITY','quantity','STOCK','stock']) || 0),
+    tag:     String(pick(['STATUS','status','STATUS']) || 'instock').trim(),
+    sortOrder: Number(pick(['SORTORDER','SORT ORDER','sortOrder','ORDER']) || idx+1),
+    imgs:    [
+      String(pick(['IMG1','IMG 1','image1','IMAGE 1','IMAGE1']) || '').trim(),
+      String(pick(['IMG2','IMG 2','image2','IMAGE 2','IMAGE2']) || '').trim(),
+      String(pick(['IMG3','IMG 3','image3','IMAGE 3','IMAGE3']) || '').trim(),
+      String(pick(['IMG4','IMG 4','image4','IMAGE 4','IMAGE4']) || '').trim(),
+    ],
+    img1Pos:  String(pick(['IMG1POS','img1Pos','IMAGE1POS']) || 'center').trim(),
+    img2Pos:  String(pick(['IMG2POS','img2Pos','IMAGE2POS']) || 'center').trim(),
+    img1Zoom: Number(pick(['IMG1ZOOM','img1Zoom','IMAGE1ZOOM']) || 100),
+    img2Zoom: Number(pick(['IMG2ZOOM','img2Zoom','IMAGE2ZOOM']) || 100),
+    refImg:   String(pick(['REF IMG','refImg','REF_IMG']) || '').trim()
+  };
+}
+
+function runImport(rows){
+  var products = rows.map(mapImportRow).filter(function(p){ return p.model; });
+  if(!products.length){ alert('No valid products found. Make sure the file has a MODEL NO. column.'); return; }
+
+  var analysis = analyseImport(products);
+  var summary = [
+    'Total: ' + analysis.total + ' products',
+    'New: ' + analysis.newCount,
+    'Updated: ' + analysis.updatedCount,
+    'Removed from live: ' + analysis.removedCount,
+  ];
+  if(analysis.dupeModels.length) summary.push('\u26a0 Duplicate models: ' + analysis.dupeModels.join(', '));
+  if(analysis.missingImgs.length) summary.push('\u26a0 Missing images: ' + analysis.missingImgs.slice(0,5).join(', ') + (analysis.missingImgs.length>5?' ...'+analysis.missingImgs.length+' total':''));
+  if(!confirm('Import Preview\n\n' + summary.join('\n') + '\n\nProceed with import?')) return;
+
+  createLocalBackup();
+  var btn = g('admBtnImport');
+  btn.disabled = true;
+  var i = 0;
+  function saveNext(){
+    if(i >= products.length){
+      btn.disabled = false; btn.textContent = 'Import';
+      fetchProducts(function(){ admRefreshAll(); });
+      alert('Done — imported ' + products.length + ' products.');
+      return;
+    }
+    btn.textContent = 'Importing ' + (i+1) + '/' + products.length + '...';
+    pushUpdate(products[i], function(){ i++; saveNext(); });
+  }
+  saveNext();
+}
+
+function admImportJson(file){
+  var ext = file.name.split('.').pop().toLowerCase();
+
+  if(ext === 'json'){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var data;
+      try{ data = JSON.parse(e.target.result); }
+      catch(err){ alert('Invalid JSON file.'); return; }
+      if(!Array.isArray(data) || !data.length){ alert('No products found in JSON file.'); return; }
+      // Support both our export format (with PRODUCT NAME etc) and any array of objects
+      var rows = data.map(function(p){
+        // If it's already in our internal format (has p.name, p.model directly) use as-is
+        if(p.model && p.name) return p;
+        return null;
+      });
+      var directFormat = rows.every(function(r){ return r !== null; });
+      if(directFormat){
+        runImport(data.map(function(p,idx){
+          return {
+            name:p['PRODUCT NAME']||p.name||'', brand:p['BRAND']||p.brand||'',
+            carbrand:p['CARBRAND']||p.carbrand||'', model:p['MODEL NO.']||p.model||'',
+            price:Number(p['PRICE']||p.price||0), origPrice:Number(p['ORIGPRICE']||p.origPrice||p['PRICE']||p.price||0),
+            qty:Number(p['QTY']||p.qty||0), tag:p['STATUS']||p.status||'instock',
+            sortOrder:Number(p['SORTORDER']||p.sortOrder||idx+1),
+            imgs:[p['IMG1']||'',p['IMG2']||'',p['IMG3']||'',p['IMG4']||''],
+            img1Pos:p['IMG1POS']||'center', img2Pos:p['IMG2POS']||'center',
+            img1Zoom:Number(p['IMG1ZOOM']||100), img2Zoom:Number(p['IMG2ZOOM']||100),
+            refImg:p['REF IMG']||''
+          };
+        }));
+      } else {
+        runImport(data);
+      }
+    };
+    reader.readAsText(file);
+    return;
+  }
+
+  if(ext === 'csv' || ext === 'xlsx' || ext === 'xls'){
+    loadSheetJs(function(){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        try{
+          var data = new Uint8Array(e.target.result);
+          var workbook = XLSX.read(data, {type:'array'});
+          var sheet = workbook.Sheets[workbook.SheetNames[0]];
+          var rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+          if(!rows.length){ alert('No data found in the file.'); return; }
+          runImport(rows);
+        }catch(err){
+          alert('Could not read file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+    return;
+  }
+
+  alert('Unsupported file type. Please use JSON, CSV, or Excel (.xlsx).');
+}
+
 function analyseImport(incoming){
   var current = PRODUCTS;
   var currentModels = {};
@@ -7230,60 +7403,6 @@ function createLocalBackup(){
   }catch(e){}
 }
 
-function admImportJson(file){
-  var reader = new FileReader();
-  reader.onload = function(e){
-    var products;
-    try{ products = JSON.parse(e.target.result); }
-    catch(err){ alert('Invalid JSON file. Please check the file and try again.'); return; }
-    if(!Array.isArray(products) || !products.length){ alert('No products found in the JSON file.'); return; }
-
-    var analysis = analyseImport(products);
-    var summary = [
-      'Total: ' + analysis.total + ' products',
-      'New: ' + analysis.newCount,
-      'Updated: ' + analysis.updatedCount,
-      'Removed from live: ' + analysis.removedCount,
-    ];
-    if(analysis.dupeModels.length) summary.push('⚠ Duplicate models: ' + analysis.dupeModels.join(', '));
-    if(analysis.missingImgs.length) summary.push('⚠ Missing images: ' + analysis.missingImgs.slice(0,5).join(', ') + (analysis.missingImgs.length>5?' ...'+analysis.missingImgs.length+' total':''));
-    if(analysis.dupeImgs.length) summary.push('⚠ Shared image URLs: ' + analysis.dupeImgs.length);
-    if(!confirm('Import Preview\n\n' + summary.join('\n') + '\n\nProceed with import?')) return;
-
-    createLocalBackup();
-    var btn = g('admBtnImport');
-    btn.disabled = true;
-    var i = 0;
-    function saveNext(){
-      if(i >= products.length){
-        btn.disabled = false; btn.textContent = 'Import JSON';
-        fetchProducts(function(){ admRefreshAll(); });
-        alert('Done — imported ' + products.length + ' products.');
-        return;
-      }
-      var p = products[i];
-      var prod = {
-        name: p['PRODUCT NAME']||p.name||'',
-        brand: p['BRAND']||p.brand||'',
-        carbrand: p['CARBRAND']||p.carbrand||'',
-        model: p['MODEL NO.']||p.model||'',
-        price: Number(p['PRICE']||p.price||0),
-        origPrice: Number(p['ORIGPRICE']||p.origPrice||p['PRICE']||p.price||0),
-        qty: Number(p['QTY']||p.qty||0),
-        tag: p['STATUS']||p.status||'instock',
-        sortOrder: Number(p['SORTORDER']||p.sortOrder||i+1),
-        imgs: [p['IMG1']||'', p['IMG2']||'', p['IMG3']||'', p['IMG4']||''],
-        img1Pos: p['IMG1POS']||'center', img2Pos: p['IMG2POS']||'center',
-        img1Zoom: Number(p['IMG1ZOOM']||100), img2Zoom: Number(p['IMG2ZOOM']||100),
-        refImg: p['REF IMG']||''
-      };
-      btn.textContent = 'Importing ' + (i+1) + '/' + products.length + '...';
-      pushUpdate(prod, function(){ i++; saveNext(); });
-    }
-    saveNext();
-  };
-  reader.readAsText(file);
-}
 
 function admExportCsv(){
   var headers = ['BRAND','CARBRAND','PRODUCT NAME','MODEL NO.','PRICE','ORIGPRICE','QTY','STATUS','SORTORDER','IMG1','IMG2','IMG3','IMG4','IMG1POS','IMG2POS','IMG1ZOOM','IMG2ZOOM'];
